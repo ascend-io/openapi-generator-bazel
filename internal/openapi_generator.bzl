@@ -73,7 +73,7 @@ def _new_generator_command(ctx, declared_dir, rjars):
 
     # fixme: by default, openapi-generator is rather verbose. this helps with that but can also mask useful error messages
     # when it fails. look into log configuration options. it's a java app so perhaps just a log4j.properties or something
-    gen_cmd += " 1>/dev/null"
+    # gen_cmd += " 1>/dev/null"
     return gen_cmd
 
 def _impl(ctx):
@@ -81,6 +81,17 @@ def _impl(ctx):
     (cjars, rjars) = (jars.compiletime, jars.runtime)
 
     declared_dir = ctx.actions.declare_directory("%s" % (ctx.attr.name))
+
+    outputs = [
+        declared_dir,
+        ctx.actions.declare_file("%s/openapi_client/api_client.py" % (ctx.attr.name)),
+        ctx.actions.declare_file("%s/openapi_client/configuration.py" % (ctx.attr.name)),
+        ctx.actions.declare_file("%s/openapi_client/rest.py" % (ctx.attr.name)),
+        ctx.actions.declare_file("%s/openapi_client/exceptions.py" % (ctx.attr.name)),
+        # ctx.actions.declare_file("%s/openapi_client/__init__.py" % (ctx.attr.name)),
+        ctx.actions.declare_file("%s/openapi_client/api/__init__.py" % (ctx.attr.name)),
+        ctx.actions.declare_file("%s/openapi_client/api/ascend_api.py" % (ctx.attr.name)),
+    ]
 
     inputs = [
         ctx.file.openapi_generator_cli,
@@ -94,15 +105,20 @@ def _impl(ctx):
             gen_dir = declared_dir.path,
             generator_command = _new_generator_command(ctx, declared_dir, rjars),
         ),
-        outputs = [declared_dir],
+        outputs = outputs,
         tools = ctx.files._jdk,
     )
 
-    srcs = declared_dir.path
+    providers = [DefaultInfo(files = depset(outputs))]
 
-    return DefaultInfo(files = depset([
-        declared_dir,
-    ]))
+    if ctx.attr.generator == "python":
+        providers.append(PyInfo(
+            transitive_sources = depset(),
+            has_py3_only_sources = True,
+            imports = depset(),
+        ))
+
+    return providers
 
 # taken from rules_scala
 def _collect_jars(targets):
