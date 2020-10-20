@@ -17,7 +17,7 @@ def _comma_separated_pairs(pairs):
         for k, v in pairs.items()
     ])
 
-def _new_generator_command(ctx, declared_dir, rjars):
+def _new_generator_command(ctx, declared_dir, template_dir, rjars):
     java_path = ctx.attr._jdk[java_common.JavaRuntimeInfo].java_executable_exec_path
     gen_cmd = str(java_path)
 
@@ -54,6 +54,10 @@ def _new_generator_command(ctx, declared_dir, rjars):
         mappings = _comma_separated_pairs(ctx.attr.type_mappings),
     )
 
+    gen_cmd += ' --import-mappings "{mappings}"'.format(
+        mappings = _comma_separated_pairs(ctx.attr.import_mappings),
+    )
+
     if ctx.attr.api_package:
         gen_cmd += " --api-package {package}".format(
             package = ctx.attr.api_package,
@@ -69,6 +73,10 @@ def _new_generator_command(ctx, declared_dir, rjars):
     if ctx.attr.engine:
         gen_cmd += " --engine {package}".format(
             package = ctx.attr.engine,
+        )
+    if template_dir:
+        gen_cmd += " --template-dir {dir}".format(
+            dir = template_dir.path
         )
 
     # fixme: by default, openapi-generator is rather verbose. this helps with that but can also mask useful error messages
@@ -98,12 +106,23 @@ def _impl(ctx):
         ctx.file.spec,
     ] + cjars.to_list() + rjars.to_list()
 
+    template_dir = None
+    if ctx.attr.templates:
+       template_dir = ctx.actions.declare_directory("template_dir")
+       ctx.actions.run(
+           outputs = [template_dir],
+           inputs = ctx.files.templates,
+           executable = "cp",
+           arguments = [t.path for t in ctx.files.templates] + [template_dir.path]
+       )
+       inputs.append(template_dir)
+
     # TODO: Convert to run
     ctx.actions.run_shell(
         inputs = inputs,
         command = "mkdir -p {gen_dir} && {generator_command}".format(
             gen_dir = declared_dir.path,
-            generator_command = _new_generator_command(ctx, declared_dir, rjars),
+            generator_command = _new_generator_command(ctx, declared_dir, template_dir, rjars),
         ),
         outputs = outputs,
         tools = ctx.files._jdk,
@@ -169,7 +188,9 @@ _openapi_generator = rule(
         "additional_properties": attr.string_dict(),
         "system_properties": attr.string_dict(),
         "engine": attr.string(),
+        "templates": attr.label(),
         "type_mappings": attr.string_dict(),
+        "import_mappings": attr.string_dict(),
         "is_windows": attr.bool(mandatory = True),
         "_jdk": attr.label(
             default = Label("@bazel_tools//tools/jdk:current_java_runtime"),
